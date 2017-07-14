@@ -41,11 +41,6 @@ typedef struct {
     CT_Block blocks[CT_HEAP_BLOCKS];
 } CT_Heap;
 
-CT_Heap foo = {.free  = NULL,
-               .head  = NULL,
-               .top   = CT_HEAP_BASE + sizeof(CT_Heap),
-               .limit = CT_HEAP_LIMIT};
-
 static CT_Heap *heap = (CT_Heap *)CT_HEAP_BASE;
 
 /**
@@ -109,13 +104,15 @@ static void compress() {
             print_s("new size");
             print_i(new_size);
             ptr->size = new_size;
+            CT_Block *next = prev->next;
             // make merged blocks available
-            release_blocks(ptr->next, prev);
+            release_blocks(ptr->next, prev->next);
             // relink
-            ptr->next = prev->next;
-            ptr       = prev;
+            ptr->next = next;
+            ptr       = next;
+        } else {
+            ptr = ptr->next;
         }
-        ptr = ptr->next;
     }
 }
 
@@ -168,8 +165,22 @@ void *ct_malloc(size_t num) {
             ptr->next  = heap->head;
             heap->head = ptr;
             if (is_top) {
+                print_s("new top");
                 ptr->size = num;
                 heap->top = (size_t)ptr->addr + num;
+            } else if (heap->avail != NULL) {
+                size_t excess = ptr->size - num;
+                if (excess >= CT_HEAP_ALIGN) {
+                    ptr->size       = num;
+                    CT_Block *split = heap->avail;
+                    heap->avail     = split->next;
+                    split->addr     = ptr->addr + num;
+                    print_s("split");
+                    print_i((size_t)split->addr);
+                    split->size = excess;
+                    insert_block(split);
+                    compress();
+                }
             }
             return ptr->addr;
         }
@@ -190,4 +201,29 @@ void *ct_malloc(size_t num) {
         return ptr->addr;
     }
     return NULL;
+}
+
+static size_t count_blocks(CT_Block *ptr) {
+  size_t num=0;
+  while(ptr != NULL) {
+    num++;
+    ptr = ptr->next;
+  }
+  return num;
+}
+
+size_t ct_num_free() {
+  return count_blocks(heap->free);
+}
+
+size_t ct_num_used() {
+  return count_blocks(heap->head);
+}
+
+size_t ct_num_avail() {
+  return count_blocks(heap->avail);
+}
+
+size_t ct_check() {
+  return ct_num_free()+ct_num_used()+ct_num_avail();
 }
