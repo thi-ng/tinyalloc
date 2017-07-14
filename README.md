@@ -4,7 +4,7 @@ Tiny replacement for `malloc` / `free` in unmanaged, linear memory situations, e
 
 ## Features
 
-- written in C11, no dependencies or syscalls
+- written in standalone C11, no dependencies, C runtime or syscalls used
 - configurable address region (and max. block count) for heap space
 - configurable pointer alignment in heap space
 - optional compaction of consecutive free blocks
@@ -13,11 +13,13 @@ Tiny replacement for `malloc` / `free` in unmanaged, linear memory situations, e
 
 ## Details
 
-**tinyalloc** maintains 3 linked lists: available blocks, used blocks, free blocks. All lists are stored in the same fixed sized array, so the memory overhead can be controlled at compile time via the [configuration vars](#configuration) listed below. During initialization all blocks are added to the list of available blocks.
+**tinyalloc** maintains 3 linked lists: fresh blocks, used blocks, free blocks. All lists are stored in the same fixed sized array so the memory overhead can be controlled at compile time via the [configuration vars](#configuration) listed below. During initialization all blocks are added to the list of available blocks.
+
+![memory layout](tinyalloc.png)
 
 ### Allocation
 
-When a new chunk of memory is requested, all previously freed blocks are checked for potential re-use. If a block is found and larger than the requested size and the size difference is greater than the configured threshold (`TA_SPLIT_THRESHOLD`), the existing block is first split, the chunks are added to the used & free lists respectively and the pointer to the first chunk returned to the user. If no blocks in the free list qualify, a new block is allocated at the current heap top address, moved from the "available" to the "used" block list and the pointer returned to the caller.
+When a new chunk of memory is requested, all previously freed blocks are checked for potential re-use. If a block is found, is larger than the requested size and the size difference is greater than the configured threshold (`TA_SPLIT_THRESHOLD`), then the block is first split, the chunks added to the used & free lists respectively and the pointer to the first chunk returned to the user. If no blocks in the free list qualify, a new block is allocated at the current heap top address, moved from the "fresh" to the "used" block list and the pointer returned to the caller.
 
 Note: All returned pointers are aligned to `TA_ALIGN` word boundaries. Same goes for allocated block sizes.
 
@@ -55,17 +57,23 @@ Structural validation. Returns `true` if internal heap structure is ok.
 |--------|---------|---------|
 | `TA_ALIGN` | 8 | Word size for pointer alignment |
 | `TA_BASE` | 0x400 | Address of **tinyalloc** control data structure |
+| `TA_DEBUG` | undefined | Trace debug information |
 | `TA_HEAP_START` | 0x1010 | Heap space start address |
-| `TA_HEAP_LIMIT` | 0x1000000 | Heap space end address |
+| `TA_HEAP_LIMIT` | 0xffffff | Heap space end address |
 | `TA_HEAP_BLOCKS` | 256 | Max. number of memory chunks |
-| `TA_SPLIT_THRESHOLD`  | 16 | Size threshold for splitting chunks |
+| `TA_SPLIT_THRESH` | 16 | Size threshold for splitting chunks |
+
+On a 32bit system, the default configuration causes an overhead of 3088 bytes in RAM, but can be reduced if fewer memory blocks are needed.
 
 **Notes:**
 
 - `TA_ALIGN` is assumed to be >= native word size
 - `TA_HEAP_START` is assumed to be properly aligned
 
-On a 32bit system, the default configuration causes an overhead of 3088 bytes in RAM, but can be reduced if fewer memory blocks are needed.
+If building in debug mode (if `TA_DEBUG` symbol is defined), two externally defined functions are required:
+
+- `print_s(char *)` - to print a single string
+- `print_i(size_t)` - to print a single unsigned int
 
 ### Building for WASM
 

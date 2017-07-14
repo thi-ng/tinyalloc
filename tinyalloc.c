@@ -1,11 +1,11 @@
 #include "tinyalloc.h"
 
-#ifdef NDEBUG
-#define print_s(X)
-#define print_i(X)
-#else
+#ifdef TA_DEBUG
 extern void print_s(char *);
 extern void print_i(size_t);
+#else
+#define print_s(X)
+#define print_i(X)
 #endif
 
 typedef struct Block Block;
@@ -19,7 +19,7 @@ struct Block {
 typedef struct {
     Block *free;   // first free block
     Block *used;   // first used block
-    Block *avail;  // first available blank block
+    Block *fresh;  // first available blank block
     size_t top;    // top free addr
     Block blocks[TA_HEAP_BLOCKS];
 } Heap;
@@ -59,10 +59,10 @@ static void release_blocks(Block *scan, Block *to) {
         print_s("release");
         print_i((size_t)scan);
         scan_next   = scan->next;
-        scan->next  = heap->avail;
+        scan->next  = heap->fresh;
         scan->addr  = 0;
         scan->size  = 0;
-        heap->avail = scan;
+        heap->fresh = scan;
         scan        = scan_next;
     }
 }
@@ -102,11 +102,11 @@ static void compact() {
 bool ta_init() {
     heap->free   = NULL;
     heap->used   = NULL;
-    heap->avail  = heap->blocks;
+    heap->fresh  = heap->blocks;
     heap->top    = TA_HEAP_START;
     Block *block = heap->blocks;
-    size_t i = TA_HEAP_BLOCKS - 1;
-    while(i--) {
+    size_t i     = TA_HEAP_BLOCKS - 1;
+    while (i--) {
         block->next = block + 1;
         block++;
     }
@@ -152,12 +152,12 @@ static Block *alloc_block(size_t num) {
                 print_s("resize top block");
                 ptr->size = num;
                 heap->top = (size_t)ptr->addr + num;
-            } else if (heap->avail != NULL) {
+            } else if (heap->fresh != NULL) {
                 size_t excess = ptr->size - num;
-                if (excess >= TA_SIZE_THRESHOLD) {
+                if (excess >= TA_SPLIT_THRESH) {
                     ptr->size    = num;
-                    Block *split = heap->avail;
-                    heap->avail  = split->next;
+                    Block *split = heap->fresh;
+                    heap->fresh  = split->next;
                     split->addr  = ptr->addr + num;
                     print_s("split");
                     print_i((size_t)split->addr);
@@ -174,9 +174,9 @@ static Block *alloc_block(size_t num) {
     // no matching free blocks
     // see if any other blocks available
     size_t new_top = top + num;
-    if (heap->avail != NULL && new_top <= TA_HEAP_LIMIT) {
-        ptr         = heap->avail;
-        heap->avail = ptr->next;
+    if (heap->fresh != NULL && new_top <= TA_HEAP_LIMIT) {
+        ptr         = heap->fresh;
+        heap->fresh = ptr->next;
         ptr->addr   = (void *)top;
         ptr->next   = heap->used;
         ptr->size   = num;
@@ -200,9 +200,9 @@ static void memset(void *ptr, uint8_t c, size_t num) {
     size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
     size_t cw    = c;
     cw           = (cw << 24) | (cw << 16) | (cw << 8) | cw;
-    #ifdef __LP64__
+#ifdef __LP64__
     cw |= (cw << 32);
-    #endif
+#endif
     while (numw--) {
         *ptrw++ = cw;
     }
@@ -241,7 +241,7 @@ size_t ta_num_used() {
 }
 
 size_t ta_num_avail() {
-    return count_blocks(heap->avail);
+    return count_blocks(heap->fresh);
 }
 
 bool ta_check() {

@@ -22,8 +22,8 @@
 #define TA_HEAP_BLOCKS 256
 #endif
 
-#ifndef TA_SIZE_THRESHOLD
-#define TA_SIZE_THRESHOLD 16
+#ifndef TA_SPLIT_THRESH
+#define TA_SPLIT_THRESH 16
 #endif
 
 bool ta_init();
