@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifndef CT_HEAP_ALIGN
@@ -34,7 +35,7 @@ struct CT_Block {
 
 typedef struct {
     CT_Block *free;   // first free block
-    CT_Block *head;   // first used block
+    CT_Block *used;   // first used block
     CT_Block *avail;  // first available blank block
     size_t top;       // top free addr
     size_t limit;     // heap limit
@@ -99,11 +100,11 @@ static void compress() {
             prev = scan;
             scan = scan->next;
         }
-        size_t new_size = prev->addr + prev->size - ptr->addr;
-        if (new_size > ptr->size) {
+        if (prev != ptr) {
+            size_t new_size = prev->addr + prev->size - ptr->addr;
             print_s("new size");
             print_i(new_size);
-            ptr->size = new_size;
+            ptr->size      = new_size;
             CT_Block *next = prev->next;
             // make merged blocks available
             release_blocks(ptr->next, prev->next);
@@ -118,7 +119,7 @@ static void compress() {
 
 void ct_heap_init() {
     heap->free      = NULL;
-    heap->head      = NULL;
+    heap->used      = NULL;
     heap->avail     = heap->blocks;
     heap->top       = CT_HEAP_BASE + sizeof(CT_Heap);
     heap->limit     = CT_HEAP_LIMIT;
@@ -129,24 +130,24 @@ void ct_heap_init() {
     }
 }
 
-int ct_free(void *free) {
-    CT_Block *block = heap->head;
+bool ct_free(void *free) {
+    CT_Block *block = heap->used;
     CT_Block *prev  = NULL;
     while (block != NULL) {
         if (free == block->addr) {
             if (prev) {
                 prev->next = block->next;
             } else {
-                heap->head = block->next;
+                heap->used = block->next;
             }
             insert_block(block);
             compress();
-            return 0;
+            return true;
         }
         prev  = block;
         block = block->next;
     }
-    return 1;
+    return false;
 }
 
 void *ct_malloc(size_t num) {
@@ -162,10 +163,10 @@ void *ct_malloc(size_t num) {
             } else {
                 heap->free = ptr->next;
             }
-            ptr->next  = heap->head;
-            heap->head = ptr;
+            ptr->next  = heap->used;
+            heap->used = ptr;
             if (is_top) {
-                print_s("new top");
+                print_s("resize top block");
                 ptr->size = num;
                 heap->top = (size_t)ptr->addr + num;
             } else if (heap->avail != NULL) {
@@ -194,9 +195,9 @@ void *ct_malloc(size_t num) {
         ptr         = heap->avail;
         heap->avail = ptr->next;
         ptr->addr   = (void *)top;
-        ptr->next   = heap->head;
+        ptr->next   = heap->used;
         ptr->size   = num;
-        heap->head  = ptr;
+        heap->used  = ptr;
         heap->top   = new_top;
         return ptr->addr;
     }
@@ -204,26 +205,26 @@ void *ct_malloc(size_t num) {
 }
 
 static size_t count_blocks(CT_Block *ptr) {
-  size_t num=0;
-  while(ptr != NULL) {
-    num++;
-    ptr = ptr->next;
-  }
-  return num;
+    size_t num = 0;
+    while (ptr != NULL) {
+        num++;
+        ptr = ptr->next;
+    }
+    return num;
 }
 
 size_t ct_num_free() {
-  return count_blocks(heap->free);
+    return count_blocks(heap->free);
 }
 
 size_t ct_num_used() {
-  return count_blocks(heap->head);
+    return count_blocks(heap->used);
 }
 
 size_t ct_num_avail() {
-  return count_blocks(heap->avail);
+    return count_blocks(heap->avail);
 }
 
-size_t ct_check() {
-  return ct_num_free()+ct_num_used()+ct_num_avail();
+bool ct_check() {
+    return ct_num_free() + ct_num_used() + ct_num_avail() == CT_HEAP_BLOCKS;
 }
