@@ -1,8 +1,12 @@
-#include "talloc.h"
+#include "tinyalloc.h"
 
+#ifdef NDEBUG
+#define print_s(X)
+#define print_i(X)
+#else
 extern void print_s(char *);
 extern void print_i(size_t);
-extern void print_f(float);
+#endif
 
 typedef struct Block Block;
 
@@ -17,7 +21,6 @@ typedef struct {
     Block *used;   // first used block
     Block *avail;  // first available blank block
     size_t top;    // top free addr
-    size_t limit;  // heap limit
     Block blocks[TA_HEAP_BLOCKS];
 } Heap;
 
@@ -64,7 +67,7 @@ static void release_blocks(Block *scan, Block *to) {
     }
 }
 
-static void compress() {
+static void compact() {
     Block *ptr  = heap->free;
     Block *prev = NULL;
     Block *scan;
@@ -96,21 +99,21 @@ static void compress() {
     }
 }
 
-bool talloc_init() {
+bool ta_init() {
     heap->free   = NULL;
     heap->used   = NULL;
     heap->avail  = heap->blocks;
-    heap->top    = TA_BASE + sizeof(Heap);
-    heap->limit  = TA_HEAP_LIMIT;
+    heap->top    = TA_HEAP_START;
     Block *block = heap->blocks;
-    for (size_t i = TA_HEAP_BLOCKS - 1; i > 0; i--) {
+    size_t i = TA_HEAP_BLOCKS - 1;
+    while(i--) {
         block->next = block + 1;
         block++;
     }
     return true;
 }
 
-bool talloc_free(void *free) {
+bool ta_free(void *free) {
     Block *block = heap->used;
     Block *prev  = NULL;
     while (block != NULL) {
@@ -121,7 +124,7 @@ bool talloc_free(void *free) {
                 heap->used = block->next;
             }
             insert_block(block);
-            compress();
+            compact();
             return true;
         }
         prev  = block;
@@ -130,7 +133,7 @@ bool talloc_free(void *free) {
     return false;
 }
 
-void *talloc(size_t num) {
+static Block *alloc_block(size_t num) {
     Block *ptr  = heap->free;
     Block *prev = NULL;
     size_t top  = heap->top;
@@ -151,7 +154,7 @@ void *talloc(size_t num) {
                 heap->top = (size_t)ptr->addr + num;
             } else if (heap->avail != NULL) {
                 size_t excess = ptr->size - num;
-                if (excess >= TA_ALIGN) {
+                if (excess >= TA_SIZE_THRESHOLD) {
                     ptr->size    = num;
                     Block *split = heap->avail;
                     heap->avail  = split->next;
@@ -160,10 +163,10 @@ void *talloc(size_t num) {
                     print_i((size_t)split->addr);
                     split->size = excess;
                     insert_block(split);
-                    compress();
+                    compact();
                 }
             }
-            return ptr->addr;
+            return ptr;
         }
         prev = ptr;
         ptr  = ptr->next;
@@ -171,7 +174,7 @@ void *talloc(size_t num) {
     // no matching free blocks
     // see if any other blocks available
     size_t new_top = top + num;
-    if (heap->avail != NULL && new_top <= heap->limit) {
+    if (heap->avail != NULL && new_top <= TA_HEAP_LIMIT) {
         ptr         = heap->avail;
         heap->avail = ptr->next;
         ptr->addr   = (void *)top;
@@ -179,7 +182,43 @@ void *talloc(size_t num) {
         ptr->size   = num;
         heap->used  = ptr;
         heap->top   = new_top;
-        return ptr->addr;
+        return ptr;
+    }
+    return NULL;
+}
+
+void *ta_alloc(size_t num) {
+    Block *block = alloc_block(num);
+    if (block != NULL) {
+        return block->addr;
+    }
+    return NULL;
+}
+
+static void memset(void *ptr, uint8_t c, size_t num) {
+    size_t *ptrw = (size_t *)ptr;
+    size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
+    size_t cw    = c;
+    cw           = (cw << 24) | (cw << 16) | (cw << 8) | cw;
+    #ifdef __LP64__
+    cw |= (cw << 32);
+    #endif
+    while (numw--) {
+        *ptrw++ = cw;
+    }
+    num &= (sizeof(size_t) - 1);
+    uint8_t *ptrb = (uint8_t *)ptrw;
+    while (num--) {
+        *ptrb++ = c;
+    }
+}
+
+void *ta_calloc(size_t num, size_t size) {
+    num *= size;
+    Block *block = alloc_block(num);
+    if (block != NULL) {
+        memset(block->addr, 0, num);
+        return block->addr;
     }
     return NULL;
 }
@@ -193,19 +232,18 @@ static size_t count_blocks(Block *ptr) {
     return num;
 }
 
-size_t talloc_num_free() {
+size_t ta_num_free() {
     return count_blocks(heap->free);
 }
 
-size_t talloc_num_used() {
+size_t ta_num_used() {
     return count_blocks(heap->used);
 }
 
-size_t talloc_num_avail() {
+size_t ta_num_avail() {
     return count_blocks(heap->avail);
 }
 
-bool talloc_check() {
-    return TA_HEAP_BLOCKS ==
-           talloc_num_free() + talloc_num_used() + talloc_num_avail();
+bool ta_check() {
+    return TA_HEAP_BLOCKS == ta_num_free() + ta_num_used() + ta_num_avail();
 }
