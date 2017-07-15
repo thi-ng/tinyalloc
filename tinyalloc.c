@@ -52,9 +52,13 @@ typedef struct {
 static Heap *heap = (Heap *)TA_BASE;
 
 /**
- * Insert block into free list, sorted by addr.
+ * If compaction is enabled, inserts block
+ * into free list, sorted by addr.
+ * If disabled, add block has new head of
+ * the free list.
  */
 static void insert_block(Block *block) {
+#ifndef TA_DISABLE_COMPACT
     Block *ptr  = heap->free;
     Block *prev = NULL;
     while (ptr != NULL) {
@@ -76,8 +80,13 @@ static void insert_block(Block *block) {
         heap->free = block;
     }
     block->next = ptr;
+#else
+    block->next = heap->free;
+    heap->free  = block;
+#endif
 }
 
+#ifndef TA_DISABLE_COMPACT
 static void release_blocks(Block *scan, Block *to) {
     Block *scan_next;
     while (scan != to) {
@@ -92,15 +101,13 @@ static void release_blocks(Block *scan, Block *to) {
     }
 }
 
-#ifndef TA_DISABLE_COMPACT
 static void compact() {
     Block *ptr = heap->free;
     Block *prev;
     Block *scan;
     while (ptr != NULL) {
-        prev        = ptr;
-        scan        = ptr->next;
-        size_t base = (size_t)ptr->addr;
+        prev = ptr;
+        scan = ptr->next;
         while (scan != NULL &&
                (size_t)prev->addr + prev->size == (size_t)scan->addr) {
             print_s("merge");
@@ -109,7 +116,8 @@ static void compact() {
             scan = scan->next;
         }
         if (prev != ptr) {
-            size_t new_size = prev->addr + prev->size - ptr->addr;
+            size_t new_size =
+                (size_t)prev->addr - (size_t)ptr->addr + prev->size;
             print_s("new size");
             print_i(new_size);
             ptr->size   = new_size;
@@ -186,7 +194,7 @@ static Block *alloc_block(size_t num) {
                     ptr->size    = num;
                     Block *split = heap->fresh;
                     heap->fresh  = split->next;
-                    split->addr  = ptr->addr + num;
+                    split->addr  = (void *)((size_t)ptr->addr + num);
                     print_s("split");
                     print_i((size_t)split->addr);
                     split->size = excess;

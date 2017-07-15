@@ -9,11 +9,13 @@ Tiny replacement for `malloc` / `free` in unmanaged, linear memory situations, e
 - configurable pointer alignment in heap space
 - optional compaction of consecutive free blocks
 - optional block splitting during alloc (if re-using larger free'd blocks)
-- tiny, the WASM binary is 1.5KB
+- tiny, the WASM binary is 1.5KB (1.1KB w/ compaction disabled)
 
 ## Details
 
 **tinyalloc** maintains 3 linked lists: fresh blocks, used blocks, free blocks. All lists are stored in the same fixed sized array so the memory overhead can be controlled at compile time via the [configuration vars](#configuration) listed below. During initialization all blocks are added to the list of fresh blocks.
+
+The difference between free & fresh blocks is the former already have an associated heap address and size from previous usage. OTOH fresh blocks are uninitialized and are only used if no existing free blocks satisfy an allocation request.
 
 The diagram illustrates the state of having 1 freed block (green), 2 used blocks (red) and the beginning of the fresh (unused) block list:
 
@@ -72,6 +74,7 @@ On a 32bit system, the default configuration causes an overhead of 3088 bytes in
 **Notes:**
 
 - `TA_ALIGN` is assumed to be >= native word size
+- `TA_BASE` must be an address in RAM (on embedded devices)
 - `TA_HEAP_START` is assumed to be properly aligned
 
 If building in debug mode (if `TA_DEBUG` symbol is defined), two externally defined functions are required:
