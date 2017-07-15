@@ -13,15 +13,17 @@ Tiny replacement for `malloc` / `free` in unmanaged, linear memory situations, e
 
 ## Details
 
-**tinyalloc** maintains 3 linked lists: fresh blocks, used blocks, free blocks. All lists are stored in the same fixed sized array so the memory overhead can be controlled at compile time via the [configuration vars](#configuration) listed below. During initialization all blocks are added to the list of available blocks.
+**tinyalloc** maintains 3 linked lists: fresh blocks, used blocks, free blocks. All lists are stored in the same fixed sized array so the memory overhead can be controlled at compile time via the [configuration vars](#configuration) listed below. During initialization all blocks are added to the list of fresh blocks.
+
+The diagram illustrates the state of having 1 freed block (green), 2 used blocks (red) and the beginning of the fresh (unused) block list:
 
 ![memory layout](tinyalloc.png)
 
 ### Allocation
 
-When a new chunk of memory is requested, all previously freed blocks are checked for potential re-use. If a block is found, is larger than the requested size and the size difference is greater than the configured threshold (`TA_SPLIT_THRESHOLD`), then the block is first split, the chunks added to the used & free lists respectively and the pointer to the first chunk returned to the user. If no blocks in the free list qualify, a new block is allocated at the current heap top address, moved from the "fresh" to the "used" block list and the pointer returned to the caller.
+When a new chunk of memory is requested, all previously freed blocks are checked for potential re-use. If a block is found, is larger than the requested size and the size difference is greater than the configured threshold (`TA_SPLIT_THRESH`), then the block is first split, the chunks added to the used & free lists respectively and the pointer to the first chunk returned to the user. If no blocks in the free list qualify, a new block is allocated at the current heap top address, moved from the "fresh" to the "used" block list and the pointer returned to the caller.
 
-Note: All returned pointers are aligned to `TA_ALIGN` word boundaries. Same goes for allocated block sizes.
+Note: All returned pointers are aligned to `TA_ALIGN` word boundaries. Same goes for allocated block sizes. Also, allocation will fail when all blocks in the fixed size block array are used, even though there might still be ample space in the heap memory region...
 
 ### Freeing & compaction
 
