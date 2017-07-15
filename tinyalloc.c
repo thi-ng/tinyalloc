@@ -1,4 +1,29 @@
 #include "tinyalloc.h"
+#include <stdint.h>
+
+#ifndef TA_ALIGN
+#define TA_ALIGN 8
+#endif
+
+#ifndef TA_BASE
+#define TA_BASE 0x400
+#endif
+
+#ifndef TA_HEAP_START
+#define TA_HEAP_START (TA_BASE + sizeof(Heap))
+#endif
+
+#ifndef TA_HEAP_LIMIT
+#define TA_HEAP_LIMIT (1 << 24)
+#endif
+
+#ifndef TA_HEAP_BLOCKS
+#define TA_HEAP_BLOCKS 256
+#endif
+
+#ifndef TA_SPLIT_THRESH
+#define TA_SPLIT_THRESH 16
+#endif
 
 #ifdef TA_DEBUG
 extern void print_s(char *);
@@ -60,16 +85,17 @@ static void release_blocks(Block *scan, Block *to) {
         print_i((size_t)scan);
         scan_next   = scan->next;
         scan->next  = heap->fresh;
+        heap->fresh = scan;
         scan->addr  = 0;
         scan->size  = 0;
-        heap->fresh = scan;
         scan        = scan_next;
     }
 }
 
+#ifndef TA_DISABLE_COMPACT
 static void compact() {
-    Block *ptr  = heap->free;
-    Block *prev = NULL;
+    Block *ptr = heap->free;
+    Block *prev;
     Block *scan;
     while (ptr != NULL) {
         prev        = ptr;
@@ -92,12 +118,11 @@ static void compact() {
             release_blocks(ptr->next, prev->next);
             // relink
             ptr->next = next;
-            ptr       = next;
-        } else {
-            ptr = ptr->next;
         }
+        ptr = ptr->next;
     }
 }
+#endif
 
 bool ta_init() {
     heap->free   = NULL;
@@ -124,7 +149,9 @@ bool ta_free(void *free) {
                 heap->used = block->next;
             }
             insert_block(block);
+#ifndef TA_DISABLE_COMPACT
             compact();
+#endif
             return true;
         }
         prev  = block;
@@ -152,6 +179,7 @@ static Block *alloc_block(size_t num) {
                 print_s("resize top block");
                 ptr->size = num;
                 heap->top = (size_t)ptr->addr + num;
+#ifndef TA_DISABLE_SPLIT
             } else if (heap->fresh != NULL) {
                 size_t excess = ptr->size - num;
                 if (excess >= TA_SPLIT_THRESH) {
@@ -163,8 +191,11 @@ static Block *alloc_block(size_t num) {
                     print_i((size_t)split->addr);
                     split->size = excess;
                     insert_block(split);
+#ifndef TA_DISABLE_COMPACT
                     compact();
+#endif
                 }
+#endif
             }
             return ptr;
         }
@@ -195,21 +226,16 @@ void *ta_alloc(size_t num) {
     return NULL;
 }
 
-static void memset(void *ptr, uint8_t c, size_t num) {
+static void memclear(void *ptr, size_t num) {
     size_t *ptrw = (size_t *)ptr;
     size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
-    size_t cw    = c;
-    cw           = (cw << 24) | (cw << 16) | (cw << 8) | cw;
-#ifdef __LP64__
-    cw |= (cw << 32);
-#endif
     while (numw--) {
-        *ptrw++ = cw;
+        *ptrw++ = 0;
     }
     num &= (sizeof(size_t) - 1);
     uint8_t *ptrb = (uint8_t *)ptrw;
     while (num--) {
-        *ptrb++ = c;
+        *ptrb++ = 0;
     }
 }
 
@@ -217,7 +243,7 @@ void *ta_calloc(size_t num, size_t size) {
     num *= size;
     Block *block = alloc_block(num);
     if (block != NULL) {
-        memset(block->addr, 0, num);
+        memclear(block->addr, num);
         return block->addr;
     }
     return NULL;
@@ -240,10 +266,10 @@ size_t ta_num_used() {
     return count_blocks(heap->used);
 }
 
-size_t ta_num_avail() {
+size_t ta_num_fresh() {
     return count_blocks(heap->fresh);
 }
 
 bool ta_check() {
-    return TA_HEAP_BLOCKS == ta_num_free() + ta_num_used() + ta_num_avail();
+    return TA_HEAP_BLOCKS == ta_num_free() + ta_num_used() + ta_num_fresh();
 }

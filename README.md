@@ -58,6 +58,8 @@ Structural validation. Returns `true` if internal heap structure is ok.
 | `TA_ALIGN` | 8 | Word size for pointer alignment |
 | `TA_BASE` | 0x400 | Address of **tinyalloc** control data structure |
 | `TA_DEBUG` | undefined | Trace debug information |
+| `TA_DISABLE_COMPACT` | undefined | Disable free block compaction |
+| `TA_DISABLE_SPLIT` | undefined | Disable free block splitting during re-alloc |
 | `TA_HEAP_START` | 0x1010 | Heap space start address |
 | `TA_HEAP_LIMIT` | 0xffffff | Heap space end address |
 | `TA_HEAP_BLOCKS` | 256 | Max. number of memory chunks |
@@ -80,7 +82,7 @@ If building in debug mode (if `TA_DEBUG` symbol is defined), two externally defi
 (Requires [emscripten](http://emscripten.org))
 
 ```sh
-emcc -Os -s WASM=1 -s SIDE_MODULE=1 -o tinyalloc.wasm tinyalloc.c
+emcc -Oz -s WASM=1 -s SIDE_MODULE=1 -o tinyalloc.wasm tinyalloc.c
 ```
 
 #### Disassemble to WAST
@@ -90,3 +92,7 @@ emcc -Os -s WASM=1 -s SIDE_MODULE=1 -o tinyalloc.wasm tinyalloc.c
 ```sh
 wasm2wast --generate-names tinyalloc.wasm > tinyalloc.wast
 ```
+
+## License
+
+&copy; 2016 - 2017 Karsten Schmidt - Apache Software License 2.0 (see [LICENSE](./LICENSE))
