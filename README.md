@@ -29,7 +29,7 @@ Note: All returned pointers are aligned to `TA_ALIGN` word boundaries. Same goes
 
 ### Freeing & compaction
 
-The list of freed blocks is sorted by block start address. When a block is being freed, **tinyalloc** uses insertion sort to add the block at the right list position and then runs a compaction procedure, merging blocks as long as they form consecutive chunks of memory (with no gaps inbetween them). The resulting obsolete blocks are re-added to the list of available blocks.
+The list of freed blocks is sorted by block start address. When a block is being freed, **tinyalloc** uses insertion sort to add the block at the right list position and then runs a compaction procedure, merging blocks as long as they form consecutive chunks of memory (with no gaps in between them). The resulting obsolete blocks are re-added to the list of available blocks.
 
 ## API
 
