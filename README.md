@@ -101,3 +101,12 @@ wasm2wast --generate-names tinyalloc.wasm > tinyalloc.wast
 ## License
 
 &copy; 2016 - 2017 Karsten Schmidt - Apache Software License 2.0 (see [LICENSE](./LICENSE))
+
+### Code Visualization:
+
+Here is a cool visualization of the code evolution
+
+ [![Watch the video](https://img.youtube.com/vi/FnV34s-QC6E/0.jpg)](https://www.youtube.com/watch?v=FnV34s-QC6E)
+
+ [https://www.youtube.com/watch?v=FnV34s-QC6E](https://www.youtube.com/watch?v=FnV34s-QC6E)
+
