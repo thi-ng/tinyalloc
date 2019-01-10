@@ -143,6 +143,7 @@ bool ta_init() {
         block->next = block + 1;
         block++;
     }
+    block->next = NULL;
     return true;
 }
 
@@ -174,7 +175,7 @@ static Block *alloc_block(size_t num) {
     size_t top  = heap->top;
     num         = (num + TA_ALIGN - 1) & -TA_ALIGN;
     while (ptr != NULL) {
-        const int is_top = (size_t)ptr->addr + ptr->size >= top;
+        const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= TA_HEAP_LIMIT);
         if (is_top || ptr->size >= num) {
             if (prev != NULL) {
                 prev->next = ptr->next;
