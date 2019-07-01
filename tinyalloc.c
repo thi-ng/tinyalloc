@@ -1,30 +1,6 @@
 #include "tinyalloc.h"
 #include <stdint.h>
 
-#ifndef TA_ALIGN
-#define TA_ALIGN 8
-#endif
-
-#ifndef TA_BASE
-#define TA_BASE 0x400
-#endif
-
-#ifndef TA_HEAP_START
-#define TA_HEAP_START (TA_BASE + sizeof(Heap))
-#endif
-
-#ifndef TA_HEAP_LIMIT
-#define TA_HEAP_LIMIT (1 << 24)
-#endif
-
-#ifndef TA_HEAP_BLOCKS
-#define TA_HEAP_BLOCKS 256
-#endif
-
-#ifndef TA_SPLIT_THRESH
-#define TA_SPLIT_THRESH 16
-#endif
-
 #ifdef TA_DEBUG
 extern void print_s(char *);
 extern void print_i(size_t);
@@ -46,10 +22,14 @@ typedef struct {
     Block *used;   // first used block
     Block *fresh;  // first available blank block
     size_t top;    // top free addr
-    Block blocks[TA_HEAP_BLOCKS];
+    Block *blocks;
 } Heap;
 
-static Heap *heap = (Heap *)TA_BASE;
+static Heap *heap = NULL;
+static void *heap_limit = NULL;
+static size_t heap_split_thresh;
+static size_t heap_alignment;
+static size_t heap_max_blocks;
 
 /**
  * If compaction is enabled, inserts block
@@ -132,13 +112,21 @@ static void compact() {
 }
 #endif
 
-bool ta_init() {
+bool ta_init(const void *base, const void *limit, const size_t heap_blocks, const size_t split_thresh, const size_t alignment) {
+    heap = (Heap *)base;
+    heap_limit = limit;
+    heap_split_thresh = split_thresh;
+    heap_alignment = alignment;
+    heap_max_blocks = heap_blocks;
+
     heap->free   = NULL;
     heap->used   = NULL;
     heap->fresh  = heap->blocks;
-    heap->top    = TA_HEAP_START;
+    heap->top    = (size_t)base + sizeof(Heap) + heap_blocks * sizeof(Block);
+    heap->blocks = base + sizeof(Heap);
+
     Block *block = heap->blocks;
-    size_t i     = TA_HEAP_BLOCKS - 1;
+    size_t i     = heap_max_blocks - 1;
     while (i--) {
         block->next = block + 1;
         block++;
@@ -173,9 +161,9 @@ static Block *alloc_block(size_t num) {
     Block *ptr  = heap->free;
     Block *prev = NULL;
     size_t top  = heap->top;
-    num         = (num + TA_ALIGN - 1) & -TA_ALIGN;
+    num         = (num + heap_alignment - 1) & -heap_alignment;
     while (ptr != NULL) {
-        const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= TA_HEAP_LIMIT);
+        const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= heap_limit);
         if (is_top || ptr->size >= num) {
             if (prev != NULL) {
                 prev->next = ptr->next;
@@ -191,7 +179,7 @@ static Block *alloc_block(size_t num) {
 #ifndef TA_DISABLE_SPLIT
             } else if (heap->fresh != NULL) {
                 size_t excess = ptr->size - num;
-                if (excess >= TA_SPLIT_THRESH) {
+                if (excess >= heap_split_thresh) {
                     ptr->size    = num;
                     Block *split = heap->fresh;
                     heap->fresh  = split->next;
@@ -214,7 +202,7 @@ static Block *alloc_block(size_t num) {
     // no matching free blocks
     // see if any other blocks available
     size_t new_top = top + num;
-    if (heap->fresh != NULL && new_top <= TA_HEAP_LIMIT) {
+    if (heap->fresh != NULL && new_top <= heap_limit) {
         ptr         = heap->fresh;
         heap->fresh = ptr->next;
         ptr->addr   = (void *)top;
@@ -280,5 +268,5 @@ size_t ta_num_fresh() {
 }
 
 bool ta_check() {
-    return TA_HEAP_BLOCKS == ta_num_free() + ta_num_used() + ta_num_fresh();
+    return heap_max_blocks == ta_num_free() + ta_num_used() + ta_num_fresh();
 }
