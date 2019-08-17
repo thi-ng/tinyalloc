@@ -33,9 +33,20 @@ The list of freed blocks is sorted by block start address. When a block is being
 
 ## API
 
-### ta\_init()
+### ta\_init(void \*base, void \*limit, size_t heap_blocks, size_t split_thresh, size_t alignment)
 
 Initializes the control datastructure. MUST be called prior to any other **tinyalloc** function.
+
+| Argument | Description |
+|----------|-------------|
+| `base` | Address of **tinyalloc** control structure, typically at the beginning of your heap |
+| `limit` | Heap space end address |
+| `heap_blocks`  | Max. number of memory chunks (e.g. 256) |
+| `split_thresh` | Size threshold for splitting chunks (a good default is 16) |
+| `alignment` | Word size for pointer alignment (e.g. 8) |
+
+- `alignment` is assumed to be >= native word size
+- `base` must be an address in RAM (on embedded devices)
 
 ### void* ta\_alloc(size\_t num)
 
@@ -45,7 +56,7 @@ Like standard `malloc`, returns aligned pointer to address in heap space, or `NU
 
 Like standard `calloc`, returns aligned pointer to zeroed memory in heap space, or `NULL` if allocation failed.
 
-### bool ta\_free(void *ptr)
+### bool ta\_free(void \*ptr)
 
 Like `free`, but returns boolean result (true, if freeing succeeded). By default, any consecutive memory blocks are being merged during the freeing operation.
 
@@ -59,23 +70,13 @@ Structural validation. Returns `true` if internal heap structure is ok.
 
 | Define | Default | Comment |
 |--------|---------|---------|
-| `TA_ALIGN` | 8 | Word size for pointer alignment |
-| `TA_BASE` | 0x400 | Address of **tinyalloc** control data structure |
 | `TA_DEBUG` | undefined | Trace debug information |
 | `TA_DISABLE_COMPACT` | undefined | Disable free block compaction |
 | `TA_DISABLE_SPLIT` | undefined | Disable free block splitting during re-alloc |
-| `TA_HEAP_START` | 0x1010 | Heap space start address |
-| `TA_HEAP_LIMIT` | 0xffffff | Heap space end address |
-| `TA_HEAP_BLOCKS` | 256 | Max. number of memory chunks |
-| `TA_SPLIT_THRESH` | 16 | Size threshold for splitting chunks |
 
 On a 32bit system, the default configuration causes an overhead of 3088 bytes in RAM, but can be reduced if fewer memory blocks are needed.
 
 **Notes:**
-
-- `TA_ALIGN` is assumed to be >= native word size
-- `TA_BASE` must be an address in RAM (on embedded devices)
-- `TA_HEAP_START` is assumed to be properly aligned
 
 If building in debug mode (if `TA_DEBUG` symbol is defined), two externally defined functions are required:
 
