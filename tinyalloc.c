@@ -22,7 +22,6 @@ typedef struct {
     Block *used;   // first used block
     Block *fresh;  // first available blank block
     size_t top;    // top free addr
-    Block *blocks;
 } Heap;
 
 static Heap *heap = NULL;
@@ -121,11 +120,10 @@ bool ta_init(const void *base, const void *limit, const size_t heap_blocks, cons
 
     heap->free   = NULL;
     heap->used   = NULL;
-    heap->fresh  = heap->blocks;
-    heap->top    = (size_t)base + sizeof(Heap) + heap_blocks * sizeof(Block);
-    heap->blocks = (Block*) (base + sizeof(Heap));
+    heap->fresh  = (Block *)(heap + 1);
+    heap->top    = (size_t)(heap->fresh + heap_blocks);
 
-    Block *block = heap->blocks;
+    Block *block = heap->fresh;
     size_t i     = heap_max_blocks - 1;
     while (i--) {
         block->next = block + 1;
