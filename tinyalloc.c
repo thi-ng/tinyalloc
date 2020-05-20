@@ -26,7 +26,7 @@ typedef struct {
 } Heap;
 
 static Heap *heap = NULL;
-static void *heap_limit = NULL;
+static const void *heap_limit = NULL;
 static size_t heap_split_thresh;
 static size_t heap_alignment;
 static size_t heap_max_blocks;
@@ -123,7 +123,7 @@ bool ta_init(const void *base, const void *limit, const size_t heap_blocks, cons
     heap->used   = NULL;
     heap->fresh  = heap->blocks;
     heap->top    = (size_t)base + sizeof(Heap) + heap_blocks * sizeof(Block);
-    heap->blocks = base + sizeof(Heap);
+    heap->blocks = (Block*) (base + sizeof(Heap));
 
     Block *block = heap->blocks;
     size_t i     = heap_max_blocks - 1;
@@ -163,7 +163,7 @@ static Block *alloc_block(size_t num) {
     size_t top  = heap->top;
     num         = (num + heap_alignment - 1) & -heap_alignment;
     while (ptr != NULL) {
-        const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= heap_limit);
+        const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= (size_t)heap_limit);
         if (is_top || ptr->size >= num) {
             if (prev != NULL) {
                 prev->next = ptr->next;
@@ -202,7 +202,7 @@ static Block *alloc_block(size_t num) {
     // no matching free blocks
     // see if any other blocks available
     size_t new_top = top + num;
-    if (heap->fresh != NULL && new_top <= heap_limit) {
+    if (heap->fresh != NULL && new_top <= (size_t)heap_limit) {
         ptr         = heap->fresh;
         heap->fresh = ptr->next;
         ptr->addr   = (void *)top;
