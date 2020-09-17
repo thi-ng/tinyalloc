@@ -1,3 +1,7 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -10,3 +14,7 @@ size_t ta_num_free();
 size_t ta_num_used();
 size_t ta_num_fresh();
 bool ta_check();
+
+#ifdef __cplusplus
+}
+#endif
