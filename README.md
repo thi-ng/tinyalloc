@@ -2,6 +2,17 @@
 
 Tiny replacement for `malloc` / `free` in unmanaged, linear memory situations, e.g. [WASM](http://webassembly.org) and [embedded devices](https://github.com/thi-ng/ws-ldn-12).
 
+## Updates
+
+For an updated version (written in TypeScript, but still targetting the same linear
+memory setup) with more features and improved block splitting/coalescing, please visit:
+[thi.ng/malloc](https://github.com/thi-ng/umbrella/tree/develop/packages/malloc).
+
+For an in-depth discussion and comparison with other allocators, please see:
+
+- [Toward Specialization of Memory
+Management in Unikernels (Hugo Lefeuvre)](https://os.itec.kit.edu/downloads/2020_BA_Lefeuvre_Toward_Specialization_of_Memory_Management_in_Unikernels.pdf)
+
 ## Features
 
 - written in standalone C11, no dependencies, C runtime or syscalls used
