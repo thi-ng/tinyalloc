@@ -159,7 +159,7 @@ static Block *alloc_block(size_t num) {
     Block *ptr  = heap->free;
     Block *prev = NULL;
     size_t top  = heap->top;
-    num         = (num + heap_alignment - 1) & -heap_alignment;
+    num         = (num + heap_alignment - 1) & (0 - heap_alignment);
     while (ptr != NULL) {
         const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= (size_t)heap_limit);
         if (is_top || ptr->size >= num) {
@@ -223,7 +223,7 @@ void *ta_alloc(size_t num) {
 
 static void memclear(void *ptr, size_t num) {
     size_t *ptrw = (size_t *)ptr;
-    size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
+    size_t numw  = (num & (0 - sizeof(size_t))) / sizeof(size_t);
     while (numw--) {
         *ptrw++ = 0;
     }
