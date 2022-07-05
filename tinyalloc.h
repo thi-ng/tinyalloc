@@ -9,6 +9,7 @@ bool ta_init(const void *base, const void *limit, const size_t heap_blocks, cons
 void *ta_alloc(size_t num);
 void *ta_calloc(size_t num, size_t size);
 bool ta_free(void *ptr);
+void *ta_realloc(void *ptr,size_t num);
 
 size_t ta_num_free();
 size_t ta_num_used();
