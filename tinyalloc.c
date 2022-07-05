@@ -268,3 +268,36 @@ size_t ta_num_fresh() {
 bool ta_check() {
     return heap_max_blocks == ta_num_free() + ta_num_used() + ta_num_fresh();
 }
+
+static size_t ta_getsize(void *ptr)
+{
+  Block *block = heap->used;
+  while (block != NULL) {
+      if (ptr == block->addr) {
+          return block->size;
+      }
+      block = block->next;
+  }
+  return 0;
+}
+
+void *ta_realloc(void *ptr,size_t num) {
+    size_t c;
+    size_t ptrsize;
+    uint8_t* ptrn;
+    uint8_t* ptro;
+    ptrsize=ta_getsize(ptr);
+    if(ptrsize>0){
+     Block *block = alloc_block(num);
+     if (block != NULL) {
+         ptro=(uint8_t*)ptr;
+         ptrn=(uint8_t*)block->addr;
+         if(ptrsize>num) ptrsize=num;
+         for(c=0;c<ptrsize;c++)
+          *(ptrn+c)=*(ptro+c);
+         ta_free(ptr);
+         return block->addr;
+     }
+    }
+    return NULL;
+}
