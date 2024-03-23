@@ -5,17 +5,25 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 
-bool ta_init(const void *base, const void *limit, const size_t heap_blocks, const size_t split_thresh, const size_t alignment);
-void *ta_alloc(size_t num);
-void *ta_calloc(size_t num, size_t size);
-size_t ta_getsize(void *ptr);
-void *ta_realloc(void *ptr, size_t num);
-bool ta_free(void *ptr);
+typedef struct {
+    void *base;
+    void *limit;
+    size_t max_blocks;
+    size_t split_thresh;
+    size_t alignment;
+} ta_cfg_t;
 
-size_t ta_num_free();
-size_t ta_num_used();
-size_t ta_num_fresh();
-bool ta_check();
+void ta_init(const ta_cfg_t *cfg);
+void *ta_alloc(const ta_cfg_t *cfg, size_t num);
+void *ta_calloc(const ta_cfg_t *cfg, size_t num, size_t size);
+size_t ta_getsize(const ta_cfg_t *cfg, void *ptr);
+void *ta_realloc(const ta_cfg_t *cfg, void *ptr, size_t num);
+bool ta_free(const ta_cfg_t *cfg, void *ptr);
+
+size_t ta_num_free(const ta_cfg_t *cfg);
+size_t ta_num_used(const ta_cfg_t *cfg);
+size_t ta_num_fresh(const ta_cfg_t *cfg);
+bool ta_check(const ta_cfg_t *cfg);
 
 #ifdef __cplusplus
 }

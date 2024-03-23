@@ -1,4 +1,5 @@
 #include "tinyalloc.h"
+
 #include <stdint.h>
 
 #ifdef TA_DEBUG
@@ -30,19 +31,13 @@ typedef struct {
     size_t top;    // top free addr
 } Heap;
 
-static Heap *heap = NULL;
-static const void *heap_limit = NULL;
-static size_t heap_split_thresh;
-static size_t heap_alignment;
-static size_t heap_max_blocks;
-
 /**
  * If compaction is enabled, inserts block
  * into free list, sorted by addr.
  * If disabled, add block has new head of
  * the free list.
  */
-static void insert_block(Block *block) {
+static void insert_block(Heap *heap, Block *block) {
 #ifndef TA_DISABLE_COMPACT
     Block *ptr  = heap->free;
     Block *prev = NULL;
@@ -72,7 +67,7 @@ static void insert_block(Block *block) {
 }
 
 #ifndef TA_DISABLE_COMPACT
-static void release_blocks(Block *scan, Block *to) {
+static void release_blocks(Heap *heap, Block *scan, Block *to) {
     Block *scan_next;
     while (scan != to) {
         print_s("release");
@@ -86,7 +81,7 @@ static void release_blocks(Block *scan, Block *to) {
     }
 }
 
-static void compact() {
+static void compact(Heap *heap) {
     Block *ptr = heap->free;
     Block *prev;
     Block *scan;
@@ -108,7 +103,7 @@ static void compact() {
             ptr->size   = new_size;
             Block *next = prev->next;
             // make merged blocks available
-            release_blocks(ptr->next, prev->next);
+            release_blocks(heap, ptr->next, prev->next);
             // relink
             ptr->next = next;
         }
@@ -117,32 +112,27 @@ static void compact() {
 }
 #endif
 
-bool ta_init(const void *base, const void *limit, const size_t heap_blocks, const size_t split_thresh, const size_t alignment) {
-    heap = (Heap *)base;
-    heap_limit = limit;
-    heap_split_thresh = split_thresh;
-    heap_alignment = alignment;
-    heap_max_blocks = heap_blocks;
-
-    heap->free   = NULL;
-    heap->used   = NULL;
-    heap->fresh  = (Block *)(heap + 1);
-    heap->top    = (size_t)(heap->fresh + heap_blocks);
+void ta_init(const ta_cfg_t *cfg) {
+    Heap *heap  = (Heap *)cfg->base;
+    heap->free  = NULL;
+    heap->used  = NULL;
+    heap->fresh = (Block *)(heap + 1);
+    heap->top   = (size_t)(heap->fresh + cfg->max_blocks);
 
     Block *block = heap->fresh;
-    size_t i     = heap_max_blocks - 1;
+    size_t i     = cfg->max_blocks - 1;
     while (i--) {
         block->next = block + 1;
         block++;
     }
     block->next = NULL;
-    return true;
 }
 
-bool ta_free(void *free) {
+bool ta_free(const ta_cfg_t *cfg, void *free) {
     if (free == NULL) {
         return false;
     }
+    Heap *heap   = (Heap *)cfg->base;
     Block *block = heap->used;
     Block *prev  = NULL;
     while (block != NULL) {
@@ -152,9 +142,9 @@ bool ta_free(void *free) {
             } else {
                 heap->used = block->next;
             }
-            insert_block(block);
+            insert_block(heap, block);
 #ifndef TA_DISABLE_COMPACT
-            compact();
+            compact(heap);
 #endif
             return true;
         }
@@ -164,20 +154,21 @@ bool ta_free(void *free) {
     return false;
 }
 
-static Block *alloc_block(size_t num) {
+static Block *alloc_block(const ta_cfg_t *cfg, size_t num) {
+    Heap *heap  = (Heap *)cfg->base;
     Block *ptr  = heap->free;
     Block *prev = NULL;
     size_t top  = heap->top;
-    if (num > -heap_alignment) {
+    if (num > -cfg->alignment) {
         return NULL;  // prevent overflow
     }
-    num = (num + heap_alignment - 1) & -heap_alignment;
+    num = (num + cfg->alignment - 1) & -cfg->alignment;
     if (num == 0) {
-        num = heap_alignment;  // prevent zero-size block
+        num = cfg->alignment;  // prevent zero-size block
     }
     while (ptr != NULL) {
         const int is_top = ((size_t)ptr->addr + ptr->size >= top) &&
-                           (num <= (size_t)heap_limit - (size_t)ptr->addr);
+                           (num <= (size_t)cfg->limit - (size_t)ptr->addr);
         if (is_top || ptr->size >= num) {
             if (prev != NULL) {
                 prev->next = ptr->next;
@@ -193,7 +184,7 @@ static Block *alloc_block(size_t num) {
 #ifndef TA_DISABLE_SPLIT
             } else if (heap->fresh != NULL) {
                 size_t excess = ptr->size - num;
-                if (excess >= heap_split_thresh) {
+                if (excess >= cfg->split_thresh) {
                     ptr->size    = num;
                     Block *split = heap->fresh;
                     heap->fresh  = split->next;
@@ -201,9 +192,9 @@ static Block *alloc_block(size_t num) {
                     print_s("split");
                     print_i((size_t)split->addr);
                     split->size = excess;
-                    insert_block(split);
+                    insert_block(heap, split);
 #ifndef TA_DISABLE_COMPACT
-                    compact();
+                    compact(heap);
 #endif
                 }
 #endif
@@ -215,7 +206,7 @@ static Block *alloc_block(size_t num) {
     }
     // no matching free blocks
     // see if any other blocks available
-    if (heap->fresh != NULL && (num <= (size_t)heap_limit - top)) {
+    if (heap->fresh != NULL && (num <= (size_t)cfg->limit - top)) {
         ptr         = heap->fresh;
         heap->fresh = ptr->next;
         ptr->addr   = (void *)top;
@@ -228,8 +219,8 @@ static Block *alloc_block(size_t num) {
     return NULL;
 }
 
-void *ta_alloc(size_t num) {
-    Block *block = alloc_block(num);
+void *ta_alloc(const ta_cfg_t *cfg, size_t num) {
+    Block *block = alloc_block(cfg, num);
     if (block != NULL) {
         return block->addr;
     }
@@ -272,12 +263,12 @@ static void memcopy(void *dst, void *src, size_t num) {
 }
 #endif
 
-void *ta_calloc(size_t num, size_t size) {
+void *ta_calloc(const ta_cfg_t *cfg, size_t num, size_t size) {
     size_t orig = num;
     num *= size;
     // check for overflow
     if (size == 0 || num / size == orig) {
-        Block *block = alloc_block(num);
+        Block *block = alloc_block(cfg, num);
         if (block != NULL) {
             memclear(block->addr, block->size);
             return block->addr;
@@ -289,10 +280,11 @@ void *ta_calloc(size_t num, size_t size) {
     return NULL;
 }
 
-size_t ta_getsize(void *ptr) {
+size_t ta_getsize(const ta_cfg_t *cfg, void *ptr) {
     if (ptr == NULL) {
         return 0;
     }
+    Heap *heap   = (Heap *)cfg->base;
     Block *block = heap->used;
     while (block != NULL) {
         if (ptr == block->addr) {
@@ -303,24 +295,24 @@ size_t ta_getsize(void *ptr) {
     return 0;
 }
 
-void *ta_realloc(void *ptr, size_t num) {
+void *ta_realloc(const ta_cfg_t *cfg, void *ptr, size_t num) {
     if (ptr == NULL) {
-        return ta_alloc(num);
+        return ta_alloc(cfg, num);
     } else if (num == 0) {
-        ta_free(ptr);
+        ta_free(cfg, ptr);
         return NULL;
     }
-    size_t size = ta_getsize(ptr);
-    if (num <= size && size - num <= heap_split_thresh) {
+    size_t size = ta_getsize(cfg, ptr);
+    if (num <= size && size - num <= cfg->split_thresh) {
         return ptr;  // keep current block
     }
-    Block *block = alloc_block(num);
+    Block *block = alloc_block(cfg, num);
     if (block != NULL) {
         if (size > num) {
             size = num;
         }
         memcopy(block->addr, ptr, size);
-        ta_free(ptr);
+        ta_free(cfg, ptr);
         return block->addr;
     }
 #ifdef TA_USE_STDLIB
@@ -338,18 +330,22 @@ static size_t count_blocks(Block *ptr) {
     return num;
 }
 
-size_t ta_num_free() {
+size_t ta_num_free(const ta_cfg_t *cfg) {
+    Heap *heap = (Heap *)cfg->base;
     return count_blocks(heap->free);
 }
 
-size_t ta_num_used() {
+size_t ta_num_used(const ta_cfg_t *cfg) {
+    Heap *heap = (Heap *)cfg->base;
     return count_blocks(heap->used);
 }
 
-size_t ta_num_fresh() {
+size_t ta_num_fresh(const ta_cfg_t *cfg) {
+    Heap *heap = (Heap *)cfg->base;
     return count_blocks(heap->fresh);
 }
 
-bool ta_check() {
-    return heap_max_blocks == ta_num_free() + ta_num_used() + ta_num_fresh();
+bool ta_check(const ta_cfg_t *cfg) {
+    return cfg->max_blocks ==
+           ta_num_free(cfg) + ta_num_used(cfg) + ta_num_fresh(cfg);
 }
