@@ -9,6 +9,12 @@ extern void print_i(size_t);
 #define print_i(X)
 #endif
 
+/* optional C stdlib integration */
+#ifdef TA_USE_STDLIB
+#include <errno.h>
+#include <string.h>
+#endif
+
 typedef struct Block Block;
 
 struct Block {
@@ -227,9 +233,16 @@ void *ta_alloc(size_t num) {
     if (block != NULL) {
         return block->addr;
     }
+#ifdef TA_USE_STDLIB
+    errno = ENOMEM;
+#endif
     return NULL;
 }
 
+#ifdef TA_USE_STDLIB
+#define memclear(ptr, num) memset((ptr), 0, (num))
+#define memcopy(dst, src, num) memcpy((dst), (src), (num))
+#else
 static void memclear(void *ptr, size_t num) {
     size_t *ptrw = (size_t *)ptr;
     size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
@@ -257,18 +270,22 @@ static void memcopy(void *dst, void *src, size_t num) {
         *dstb++ = *srcb++;
     }
 }
+#endif
 
 void *ta_calloc(size_t num, size_t size) {
     size_t orig = num;
     num *= size;
-    if (size != 0 && num / size != orig) {
-        return NULL;  // overflow
+    // check for overflow
+    if (size == 0 || num / size == orig) {
+        Block *block = alloc_block(num);
+        if (block != NULL) {
+            memclear(block->addr, block->size);
+            return block->addr;
+        }
     }
-    Block *block = alloc_block(num);
-    if (block != NULL) {
-        memclear(block->addr, block->size);
-        return block->addr;
-    }
+#ifdef TA_USE_STDLIB
+    errno = ENOMEM;
+#endif
     return NULL;
 }
 
@@ -306,6 +323,9 @@ void *ta_realloc(void *ptr, size_t num) {
         ta_free(ptr);
         return block->addr;
     }
+#ifdef TA_USE_STDLIB
+    errno = ENOMEM;
+#endif
     return NULL;
 }
 
