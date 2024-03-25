@@ -134,6 +134,9 @@ bool ta_init(const void *base, const void *limit, const size_t heap_blocks, cons
 }
 
 bool ta_free(void *free) {
+    if (free == NULL) {
+        return false;
+    }
     Block *block = heap->used;
     Block *prev  = NULL;
     while (block != NULL) {
