@@ -243,6 +243,21 @@ static void memclear(void *ptr, size_t num) {
     }
 }
 
+static void memcopy(void *dst, void *src, size_t num) {
+    size_t *dstw = (size_t *)dst;
+    size_t *srcw = (size_t *)src;
+    size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
+    while (numw--) {
+        *dstw++ = *srcw++;
+    }
+    num &= (sizeof(size_t) - 1);
+    uint8_t *dstb = (uint8_t *)dstw;
+    uint8_t *srcb = (uint8_t *)srcw;
+    while (num--) {
+        *dstb++ = *srcb++;
+    }
+}
+
 void *ta_calloc(size_t num, size_t size) {
     size_t orig = num;
     num *= size;
@@ -251,7 +266,44 @@ void *ta_calloc(size_t num, size_t size) {
     }
     Block *block = alloc_block(num);
     if (block != NULL) {
-        memclear(block->addr, num);
+        memclear(block->addr, block->size);
+        return block->addr;
+    }
+    return NULL;
+}
+
+size_t ta_getsize(void *ptr) {
+    if (ptr == NULL) {
+        return 0;
+    }
+    Block *block = heap->used;
+    while (block != NULL) {
+        if (ptr == block->addr) {
+            return block->size;
+        }
+        block = block->next;
+    }
+    return 0;
+}
+
+void *ta_realloc(void *ptr, size_t num) {
+    if (ptr == NULL) {
+        return ta_alloc(num);
+    } else if (num == 0) {
+        ta_free(ptr);
+        return NULL;
+    }
+    size_t size = ta_getsize(ptr);
+    if (num <= size && size - num <= heap_split_thresh) {
+        return ptr;  // keep current block
+    }
+    Block *block = alloc_block(num);
+    if (block != NULL) {
+        if (size > num) {
+            size = num;
+        }
+        memcopy(block->addr, ptr, size);
+        ta_free(ptr);
         return block->addr;
     }
     return NULL;
