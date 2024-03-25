@@ -9,6 +9,12 @@ extern void print_i(size_t);
 #define print_i(X)
 #endif
 
+/* optional C stdlib integration */
+#ifdef TA_USE_STDLIB
+#include <errno.h>
+#include <string.h>
+#endif
+
 typedef struct Block Block;
 
 struct Block {
@@ -134,6 +140,9 @@ bool ta_init(const void *base, const void *limit, const size_t heap_blocks, cons
 }
 
 bool ta_free(void *free) {
+    if (free == NULL) {
+        return false;
+    }
     Block *block = heap->used;
     Block *prev  = NULL;
     while (block != NULL) {
@@ -159,9 +168,16 @@ static Block *alloc_block(size_t num) {
     Block *ptr  = heap->free;
     Block *prev = NULL;
     size_t top  = heap->top;
-    num         = (num + heap_alignment - 1) & -heap_alignment;
+    if (num > -heap_alignment) {
+        return NULL;  // prevent overflow
+    }
+    num = (num + heap_alignment - 1) & -heap_alignment;
+    if (num == 0) {
+        num = heap_alignment;  // prevent zero-size block
+    }
     while (ptr != NULL) {
-        const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= (size_t)heap_limit);
+        const int is_top = ((size_t)ptr->addr + ptr->size >= top) &&
+                           (num <= (size_t)heap_limit - (size_t)ptr->addr);
         if (is_top || ptr->size >= num) {
             if (prev != NULL) {
                 prev->next = ptr->next;
@@ -199,15 +215,14 @@ static Block *alloc_block(size_t num) {
     }
     // no matching free blocks
     // see if any other blocks available
-    size_t new_top = top + num;
-    if (heap->fresh != NULL && new_top <= (size_t)heap_limit) {
+    if (heap->fresh != NULL && (num <= (size_t)heap_limit - top)) {
         ptr         = heap->fresh;
         heap->fresh = ptr->next;
         ptr->addr   = (void *)top;
         ptr->next   = heap->used;
         ptr->size   = num;
         heap->used  = ptr;
-        heap->top   = new_top;
+        heap->top   = top + num;
         return ptr;
     }
     return NULL;
@@ -218,9 +233,16 @@ void *ta_alloc(size_t num) {
     if (block != NULL) {
         return block->addr;
     }
+#ifdef TA_USE_STDLIB
+    errno = ENOMEM;
+#endif
     return NULL;
 }
 
+#ifdef TA_USE_STDLIB
+#define memclear(ptr, num) memset((ptr), 0, (num))
+#define memcopy(dst, src, num) memcpy((dst), (src), (num))
+#else
 static void memclear(void *ptr, size_t num) {
     size_t *ptrw = (size_t *)ptr;
     size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
@@ -234,13 +256,76 @@ static void memclear(void *ptr, size_t num) {
     }
 }
 
+static void memcopy(void *dst, void *src, size_t num) {
+    size_t *dstw = (size_t *)dst;
+    size_t *srcw = (size_t *)src;
+    size_t numw  = (num & -sizeof(size_t)) / sizeof(size_t);
+    while (numw--) {
+        *dstw++ = *srcw++;
+    }
+    num &= (sizeof(size_t) - 1);
+    uint8_t *dstb = (uint8_t *)dstw;
+    uint8_t *srcb = (uint8_t *)srcw;
+    while (num--) {
+        *dstb++ = *srcb++;
+    }
+}
+#endif
+
 void *ta_calloc(size_t num, size_t size) {
+    size_t orig = num;
     num *= size;
+    // check for overflow
+    if (size == 0 || num / size == orig) {
+        Block *block = alloc_block(num);
+        if (block != NULL) {
+            memclear(block->addr, block->size);
+            return block->addr;
+        }
+    }
+#ifdef TA_USE_STDLIB
+    errno = ENOMEM;
+#endif
+    return NULL;
+}
+
+size_t ta_getsize(void *ptr) {
+    if (ptr == NULL) {
+        return 0;
+    }
+    Block *block = heap->used;
+    while (block != NULL) {
+        if (ptr == block->addr) {
+            return block->size;
+        }
+        block = block->next;
+    }
+    return 0;
+}
+
+void *ta_realloc(void *ptr, size_t num) {
+    if (ptr == NULL) {
+        return ta_alloc(num);
+    } else if (num == 0) {
+        ta_free(ptr);
+        return NULL;
+    }
+    size_t size = ta_getsize(ptr);
+    if (num <= size && size - num <= heap_split_thresh) {
+        return ptr;  // keep current block
+    }
     Block *block = alloc_block(num);
     if (block != NULL) {
-        memclear(block->addr, num);
+        if (size > num) {
+            size = num;
+        }
+        memcopy(block->addr, ptr, size);
+        ta_free(ptr);
         return block->addr;
     }
+#ifdef TA_USE_STDLIB
+    errno = ENOMEM;
+#endif
     return NULL;
 }
 
