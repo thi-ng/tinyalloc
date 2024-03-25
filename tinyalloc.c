@@ -159,9 +159,16 @@ static Block *alloc_block(size_t num) {
     Block *ptr  = heap->free;
     Block *prev = NULL;
     size_t top  = heap->top;
-    num         = (num + heap_alignment - 1) & -heap_alignment;
+    if (num > -heap_alignment) {
+        return NULL;  // prevent overflow
+    }
+    num = (num + heap_alignment - 1) & -heap_alignment;
+    if (num == 0) {
+        num = heap_alignment;  // prevent zero-size block
+    }
     while (ptr != NULL) {
-        const int is_top = ((size_t)ptr->addr + ptr->size >= top) && ((size_t)ptr->addr + num <= (size_t)heap_limit);
+        const int is_top = ((size_t)ptr->addr + ptr->size >= top) &&
+                           (num <= (size_t)heap_limit - (size_t)ptr->addr);
         if (is_top || ptr->size >= num) {
             if (prev != NULL) {
                 prev->next = ptr->next;
@@ -199,15 +206,14 @@ static Block *alloc_block(size_t num) {
     }
     // no matching free blocks
     // see if any other blocks available
-    size_t new_top = top + num;
-    if (heap->fresh != NULL && new_top <= (size_t)heap_limit) {
+    if (heap->fresh != NULL && (num <= (size_t)heap_limit - top)) {
         ptr         = heap->fresh;
         heap->fresh = ptr->next;
         ptr->addr   = (void *)top;
         ptr->next   = heap->used;
         ptr->size   = num;
         heap->used  = ptr;
-        heap->top   = new_top;
+        heap->top   = top + num;
         return ptr;
     }
     return NULL;
@@ -235,7 +241,11 @@ static void memclear(void *ptr, size_t num) {
 }
 
 void *ta_calloc(size_t num, size_t size) {
+    size_t orig = num;
     num *= size;
+    if (size != 0 && num / size != orig) {
+        return NULL;  // overflow
+    }
     Block *block = alloc_block(num);
     if (block != NULL) {
         memclear(block->addr, num);
