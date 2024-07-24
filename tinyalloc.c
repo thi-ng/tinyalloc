@@ -121,7 +121,7 @@ bool ta_init(const void *base, const void *limit, const size_t heap_blocks, cons
     heap->free   = NULL;
     heap->used   = NULL;
     heap->fresh  = (Block *)(heap + 1);
-    heap->top    = (size_t)(heap->fresh + heap_blocks);
+    heap->top    = (((size_t)(heap->fresh + heap_blocks)) + heap_alignment - 1) & -heap_alignment;
 
     Block *block = heap->fresh;
     size_t i     = heap_max_blocks - 1;
